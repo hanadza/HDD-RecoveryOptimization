@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HDD Recovery Optimization — Hybrid Dijkstra-DP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- HERO -->
+<section class="hero" id="home">
+  <div class="hero-grid"></div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span></span>
+      Technical Research Report · Kelompok 77 · Universitas Siliwangi
+    </div>
+    <h1>
+      Optimasi <em>Scanning Path</em><br>
+      pada HDD Recovery<br>
+      Menggunakan <em>Hybrid Dijkstra–DP</em>
+    </h1>
+    <p style="color:var(--text2); font-size:1.1rem; max-width:600px;">
+      Framework dua-tahap yang menggabungkan algoritma Dijkstra dan Dynamic Programming
+      bitmask (Held-Karp) untuk meminimalkan total waktu pemulihan sektor HDD yang rusak.
+    </p>
+    <div class="hero-meta">
+      <div class="hero-meta-item">
+        <strong>Muhammad Rifki Yusria Hatta</strong>
+        NIM 247006111065
+      </div>
+      <div class="hero-meta-item">
+        <strong>Aditya Ihsan Maulana</strong>
+        NIM 247006111069
+      </div>
+      <div class="hero-meta-item">
+        <strong>Program Studi Informatika</strong>
+        Fakultas Teknik · 2026
+      </div>
+    </div>
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <div class="hero-stat-num">12.07%</div>
+        <div class="hero-stat-label">Improvement maks. recovery time</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-num">10K</div>
+        <div class="hero-stat-label">Sektor HDD virtual (N)</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-num">k≤15</div>
+        <div class="hero-stat-label">Batas praktis DP (&lt;500ms)</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-num">100%</div>
+        <div class="hero-stat-label">Jaminan optimalitas solusi</div>
+      </div>
+    </div>
+    <div class="scroll-hint">
+      <span class="scroll-arrow">↓</span>
+      Gulir untuk melihat detail penelitian
+    </div>
+  </div>
+</section>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-inner">
+    <a href="#abstrak" class="active">Abstrak</a>
+    <a href="#parameter">Parameter</a>
+    <a href="#metodologi">Metodologi</a>
+    <a href="#simulator">Simulator</a>
+    <a href="#hasil">Hasil</a>
+    <a href="#kompleksitas">Kompleksitas</a>
+    <a href="#kesimpulan">Kesimpulan</a>
+  </div>
+</nav>
+
+<!-- ABSTRAK -->
+<section id="abstrak">
+  <div class="section-inner">
+    <div class="section-label">01 · Abstrak</div>
+    <h2>Latar Belakang & Rumusan Masalah</h2>
+    <p>
+      Hard Disk Drive (HDD) tetap menjadi tulang punggung penyimpanan data di pusat data dan
+      sistem enterprise. Seiring bertambahnya usia dan densitas, HDD rentan mengalami <em>bad sector</em> —
+      area yang gagal dibaca secara andal. Membaca sebuah bad sector membutuhkan waktu
+      hingga <strong style="color:var(--text)">8 detik</strong> per sektor akibat mekanisme <em>read retry</em> dan ECC.
+    </p>
+    <p>
+      Permasalahan inti: <em>dalam urutan apa sektor-sektor target harus dikunjungi agar total
+      waktu pemulihan seminimal mungkin?</em> Ini adalah varian <strong style="color:var(--text)">Travelling Salesman Problem (TSP)</strong>
+      pada ruang linear satu dimensi (LBA), yang termasuk kelas kompleksitas <span class="tag tag-np">NP-Hard</span>.
+    </p>
+
+    <div class="card-grid mt-2">
+      <div class="card">
+        <div class="tag tag-dp" style="margin-bottom:0.75rem;">Hybrid DP (Held-Karp)</div>
+        <h3>Solusi yang Diusulkan</h3>
+        <p>Framework dua-tahap: Dijkstra membangun matriks jarak antar sektor penting, lalu DP bitmask menentukan urutan kunjungan optimal. Menjamin solusi <em>exact optimal</em>.</p>
+      </div>
+      <div class="card">
+        <div class="tag tag-gr" style="margin-bottom:0.75rem;">Greedy Nearest Neighbor</div>
+        <h3>Baseline Pembanding</h3>
+        <p>Selalu mengunjungi sektor <em>terdekat berikutnya</em> dari posisi saat ini. Kompleksitas O(k²) — cepat, namun tidak menjamin optimalitas, terutama saat distribusi target asimetris.</p>
+      </div>
+      <div class="card">
+        <div class="tag tag-bad" style="margin-bottom:0.75rem;">Model LOGI</div>
+        <h3>Simulasi Bad Sector</h3>
+        <p>Menggunakan model LOGI dari Ahmad et al. — BFS berbobot yang menyebarkan kerusakan ke sektor tetangga (LBA±1) dengan probabilitas <em>cluster_prob</em>, merepresentasikan spatial locality.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PARAMETER -->
+<section id="parameter">
+  <div class="section-inner">
+    <div class="section-label">02 · Parameter</div>
+    <h2>Empat Parameter Utama Simulasi</h2>
+    <p>Bobot edge pada graf HDD dipengaruhi oleh empat parameter yang merepresentasikan karakteristik fisik dan mekanis disk.</p>
+
+    <div class="param-grid mt-2">
+      <div class="param-card">
+        <div class="param-icon">📍</div>
+        <div class="param-name">Offset Sektor</div>
+        <div class="param-val">LBA</div>
+        <div class="param-desc">Posisi awal kepala baca (head HDD). Menentukan titik awal perjalanan dalam ruang alamat logis.</div>
+      </div>
+      <div class="param-card">
+        <div class="param-icon">🔴</div>
+        <div class="param-name">Bad Sector Propagation</div>
+        <div class="param-val">5–30%</div>
+        <div class="param-desc">Pola kerusakan spasial menggunakan model LOGI. Bad sector membentuk klaster dengan probabilitas penyebaran 0.75–0.90.</div>
+      </div>
+      <div class="param-card">
+        <div class="param-icon">⚡</div>
+        <div class="param-name">Kecepatan Baca</div>
+        <div class="param-val">150 MB/s</div>
+        <div class="param-desc">Kecepatan baca sektor sehat — tipikal HDD 7200 RPM. Komponen pertama bobot edge.</div>
+      </div>
+      <div class="param-card">
+        <div class="param-icon">📊</div>
+        <div class="param-name">Scanner Throughput</div>
+        <div class="param-val">200 MB/s</div>
+        <div class="param-desc">Kapasitas pemrosesan scanner. Kecepatan efektif = min(read_speed, throughput) — mekanisme bottleneck.</div>
+      </div>
+    </div>
+
+    <div class="card mt-2">
+      <h3 style="margin-bottom:1rem;">Formula Bobot Edge</h3>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div>
+          <div class="formula">w(i → j) = SECTOR_SIZE_MB / min(read_speed, throughput) + penalty(j)</div>
+        </div>
+        <div>
+          <div class="formula">penalty(j) = retry_time = 8.0 detik  jika j adalah bad sector, else 0</div>
+        </div>
+        <div>
+          <div class="formula">SECTOR_SIZE_MB = 512 bytes = 4.768e-4 MB</div>
+        </div>
+      </div>
+      <p style="margin-top:1rem; font-size:13px;">
+        Seluruh bobot bersifat non-negatif → Dijkstra dapat diterapkan dengan jaminan optimalitas.
+        Bad sector di antara dua titik menyebabkan <em>jarak temporal</em> yang jauh lebih besar
+        dari jarak spasial — inilah alasan Dijkstra dibutuhkan, bukan sekadar kalkulasi linear.
+      </p>
+    </div>
+
+    <div class="tbl-wrap mt-2">
+      <table>
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Nilai Default</th>
+            <th>Variasi Eksperimen</th>
+            <th>Keterangan</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>num_sectors (N)</td><td class="text-mono">10.000</td><td>—</td><td>Jumlah total sektor HDD virtual</td></tr>
+          <tr><td>bad_ratio</td><td class="text-mono">0.05</td><td class="text-mono">5%, 15%, 30%</td><td>Low / Mid / High damage level</td></tr>
+          <tr><td>cluster_prob</td><td class="text-mono">0.75–0.90</td><td>—</td><td>Probabilitas propagasi bad sector ke tetangga</td></tr>
+          <tr><td>retry_time</td><td class="text-mono">8.0 detik</td><td>—</td><td>Penalti waktu baca per bad sector (Ahmad et al.)</td></tr>
+          <tr><td>read_speed</td><td class="text-mono">150 MB/s</td><td>—</td><td>Kecepatan baca sektor sehat — HDD 7200 RPM</td></tr>
+          <tr><td>scanner_throughput</td><td class="text-mono">200 MB/s</td><td>—</td><td>Throughput scanner; effective = min(150, 200)</td></tr>
+          <tr><td>num_targets (k)</td><td class="text-mono">3–12</td><td class="text-mono">3,5,8,10,12,15</td><td>Jumlah sektor target yang dipulihkan</td></tr>
+          <tr><td>seed</td><td class="text-mono">42</td><td>—</td><td>Random seed deterministik untuk reproducibility</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- METODOLOGI -->
+<section id="metodologi">
+  <div class="section-inner">
+    <div class="section-label">03 · Metodologi</div>
+    <h2>Pipeline Hybrid Dijkstra–Dynamic Programming</h2>
+    <p>Algoritma bekerja dalam dua tahap sekuensial. Output Tahap 1 menjadi satu-satunya input Tahap 2, tanpa umpan balik.</p>
+
+    <div class="algo-cols mt-2">
+      <div class="algo-card dp">
+        <h3>🟢 Hybrid DP (Held-Karp)</h3>
+        <div class="algo-row"><span>Kompleksitas waktu</span><span>O(k² · 2^k)</span></div>
+        <div class="algo-row"><span>Kompleksitas ruang</span><span>O(k · 2^k)</span></div>
+        <div class="algo-row"><span>Batas praktis</span><span>k ≤ 20</span></div>
+        <div class="algo-row"><span>Jaminan optimal</span><span>✓ Exact</span></div>
+        <div class="algo-row"><span>State DP</span><span>dp[mask][last]</span></div>
+      </div>
+      <div class="algo-card gr">
+        <h3>🟠 Greedy Nearest Neighbor</h3>
+        <div class="algo-row"><span>Kompleksitas waktu</span><span>O(k²)</span></div>
+        <div class="algo-row"><span>Kompleksitas ruang</span><span>O(k)</span></div>
+        <div class="algo-row"><span>Batas praktis</span><span>k → ∞</span></div>
+        <div class="algo-row"><span>Jaminan optimal</span><span>✗ Suboptimal</span></div>
+        <div class="algo-row"><span>Strategi</span><span>Nearest neighbor</span></div>
+      </div>
+    </div>
+
+    <div class="card mt-2">
+      <h3 style="margin-bottom:1.5rem;">Pipeline Eksekusi</h3>
+      <div class="pipeline">
+        <div class="pipeline-step">
+          <div class="pipeline-num p1">1a</div>
+          <div class="pipeline-body">
+            <h4>Bangkitkan Graf HDD dengan Model LOGI</h4>
+            <p>Tanamkan seed bad sector secara acak, sebarkan ke tetangga (LBA±1) dengan probabilitas <code>cluster_prob</code> menggunakan BFS hingga target <code>bad_ratio</code> tercapai. Kompleksitas: O(N).</p>
+            <div class="formula">HDDState ← generate_logi(HDDConfig)</div>
+          </div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-num p1">1b</div>
+          <div class="pipeline-body">
+            <h4>Bangun Adjacency List & Jalankan Dijkstra</h4>
+            <p>Graf linear bidirectional: setiap LBA terhubung ke LBA±1 dengan bobot berdasarkan formula di atas. Dijkstra dijalankan dari setiap node penting (start + k target) — total (k+1) eksekusi.</p>
+            <div class="formula">dist_matrix[(k+1)×(k+1)] ← build_distance_matrix(adj, [s, t₁..tₖ])</div>
+          </div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-num p2">2</div>
+          <div class="pipeline-body">
+            <h4>DP Bitmask (Held-Karp) — Urutan Optimal</h4>
+            <p><code>dp[mask][last]</code> = waktu minimum mengunjungi tepat set sektor yang direpresentasikan <code>mask</code>, dengan <code>last</code> sebagai sektor terakhir. Transisi: tambahkan target berikutnya yang belum dikunjungi.</p>
+            <div class="formula">dp[mask | (1&lt;&lt;j)][j] = min(dp[mask][last] + dist[last+1][j+1])</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-2">
+      <h3 style="margin-bottom:1rem;">Pseudocode — Held-Karp DP</h3>
+      <pre><span class="keyword">def</span> <span class="fn">dp_tsp</span>(dist_matrix, k):
+    FULL = (<span class="num">1</span> &lt;&lt; k) - <span class="num">1</span>
+    dp     = [[∞] * k <span class="keyword">for</span> _ <span class="keyword">in</span> range(<span class="num">1</span> &lt;&lt; k)]
+    parent = [[-<span class="num">1</span>] * k <span class="keyword">for</span> _ <span class="keyword">in</span> range(<span class="num">1</span> &lt;&lt; k)]
+
+    <span class="comment"># Inisialisasi: dari start (node 0) ke setiap target</span>
+    <span class="keyword">for</span> i <span class="keyword">in</span> range(k):
+        dp[<span class="num">1</span> &lt;&lt; i][i] = dist_matrix[<span class="num">0</span>][i + <span class="num">1</span>]
+
+    <span class="comment"># Isi tabel DP — semua subset mask</span>
+    <span class="keyword">for</span> mask <span class="keyword">in</span> range(<span class="num">1</span>, <span class="num">1</span> &lt;&lt; k):
+        <span class="keyword">for</span> last <span class="keyword">in</span> range(k):
+            <span class="keyword">if</span> dp[mask][last] == ∞: <span class="keyword">continue</span>
+            <span class="keyword">for</span> nxt <span class="keyword">in</span> range(k):
+                <span class="keyword">if</span> (mask >> nxt) & <span class="num">1</span>: <span class="keyword">continue</span>
+                new_mask = mask | (<span class="num">1</span> &lt;&lt; nxt)
+                new_time = dp[mask][last] + dist_matrix[last+<span class="num">1</span>][nxt+<span class="num">1</span>]
+                <span class="keyword">if</span> new_time &lt; dp[new_mask][nxt]:
+                    dp[new_mask][nxt]     = new_time
+                    parent[new_mask][nxt] = last
+
+    <span class="comment"># Rekonstruksi urutan optimal</span>
+    best = min(range(k), key=<span class="keyword">lambda</span> l: dp[FULL][l])
+    <span class="keyword">return</span> dp[FULL][best], <span class="fn">reconstruct</span>(parent, FULL, best)</pre>
+    </div>
+  </div>
+</section>
+
+<!-- SIMULATOR -->
+<section id="simulator">
+  <div class="section-inner">
+    <div class="section-label">04 · Simulator Interaktif</div>
+    <h2>Simulasi HDD Recovery</h2>
+    <p>Atur parameter simulasi di bawah, lalu jalankan untuk melihat perbandingan waktu recovery antara Hybrid DP dan Greedy secara langsung.</p>
+
+    <div class="sim-container mt-2 glow-dp">
+      <div class="sim-header">
+        <h3>🖴 HDD Recovery Simulator</h3>
+        <span class="tag tag-dp">Live Demo</span>
+      </div>
+      <div class="sim-body">
+        <div class="controls">
+          <div class="control-group">
+            <label>Jumlah sektor (N) <span class="control-val" id="nVal">200</span></label>
+            <input type="range" id="nSectors" min="50" max="500" value="200" step="10">
+          </div>
+          <div class="control-group">
+            <label>Bad sector ratio <span class="control-val" id="brVal">10%</span></label>
+            <input type="range" id="badRatio" min="0.02" max="0.40" value="0.10" step="0.01">
+          </div>
+          <div class="control-group">
+            <label>Jumlah target (k) <span class="control-val" id="kVal">5</span></label>
+            <input type="range" id="kTargets" min="2" max="12" value="5" step="1">
+          </div>
+          <div class="control-group">
+            <label>Cluster probability <span class="control-val" id="cpVal">0.75</span></label>
+            <input type="range" id="clusterProb" min="0.3" max="0.95" value="0.75" step="0.05">
+          </div>
+          <div class="control-group">
+            <label>Retry time (detik) <span class="control-val" id="rtVal">8.0s</span></label>
+            <input type="range" id="retryTime" min="1" max="20" value="8" step="0.5">
+          </div>
+          <div class="control-group">
+            <label>Posisi start (LBA) <span class="control-val" id="stVal">auto</span></label>
+            <input type="range" id="startLBA" min="0" max="100" value="50" step="1">
+          </div>
+        </div>
+
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:1rem;">
+          <span style="font-size:11px; color:var(--text3); align-self:center; text-transform:uppercase; letter-spacing:0.05em;">Preset:</span>
+          <button class="preset-btn" onclick="applyPreset(200,0.30,8,0.95,20,50)">🔴 The Trap</button>
+          <button class="preset-btn" onclick="applyPreset(200,0.02,3,0.30,1,50)">⚪ Baseline</button>
+          <button class="preset-btn" onclick="applyPreset(400,0.15,10,0.75,8,5)">🟡 Scalability</button>
+          <button class="preset-btn" onclick="applyPreset(300,0.25,8,0.90,8,5)">🟠 Asymmetric</button>
+        </div>
+        <button class="run-btn" onclick="runSimulation()">&#9654; Jalankan Simulasi</button>
+
+        <div id="simOutput" style="margin-top:1.5rem; display:none;">
+          <div style="margin-bottom:8px; font-size:11px; color:var(--text2); display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
+          <span style="color:var(--text3); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; font-size:10px;">Legenda:</span>
+          <span><span style="color:var(--bad)">■</span> bad sector</span>
+          <span><span style="color:#FF9800">■</span> start</span>
+          <span><span style="color:var(--dp)">■</span> target DP</span>
+          <span><span style="color:var(--gr)">■</span> target Greedy (berbeda)</span>
+          <span style="margin-left:auto; font-size:10px; color:var(--text3);">atas = DP path &nbsp;|&nbsp; bawah = Greedy path</span>
+        </div>
+          <canvas id="hddCanvas" height="80"></canvas>
+          <div id="dpPath" style="margin-top:8px; font-size:11px; font-family:var(--mono); color:var(--text2);"></div>
+          <div id="grPath" style="margin-top:4px; font-size:11px; font-family:var(--mono); color:var(--text2);"></div>
+
+          <div class="results-grid">
+            <div class="result-card dp">
+              <div class="result-label">Hybrid DP — Optimal</div>
+              <div class="result-time" id="dpTime">—</div>
+              <div class="result-order" id="dpOrder"></div>
+            </div>
+            <div class="result-card gr">
+              <div class="result-label">Greedy — Nearest Neighbor</div>
+              <div class="result-time" id="grTime">—</div>
+              <div class="result-order" id="grOrder"></div>
+            </div>
+          </div>
+          <div class="improvement-badge" id="improvBadge"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HASIL -->
+<section id="hasil">
+  <div class="section-inner">
+    <div class="section-label">05 · Hasil Eksperimen</div>
+    <h2>Empat Eksperimen Utama</h2>
+    <p>Eksperimen dilakukan pada dataset sintetis HDD (N=10.000 sektor) menggunakan model LOGI, dengan seed deterministik (seed=42) untuk reproducibility.</p>
+
+    <div class="chart-grid mt-2">
+      <!-- Chart 1: Improvement vs Bad Ratio -->
+      <div class="chart-card">
+        <div class="chart-title">Eks. 1 — Improvement per Damage Level</div>
+        <div class="chart-sub">Rata-rata improvement DP vs Greedy per bad_ratio (k=3,5,8,10)</div>
+        <div class="legend-row">
+          <div class="legend-item"><div class="legend-dot" style="background:#1D9E75"></div>DP lebih baik</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#888780"></div>Ekuivalen</div>
+        </div>
+        <div style="position:relative; height:220px;">
+          <canvas id="chart1" role="img" aria-label="Bar chart improvement DP vs Greedy per bad ratio">Improvement: 5%→2.1%, 15%→6.8%, 30%→12.1%</canvas>
+        </div>
+      </div>
+
+      <!-- Chart 2: CPU Time vs k -->
+      <div class="chart-card">
+        <div class="chart-title">Eks. 2 — Pertumbuhan CPU Time vs k</div>
+        <div class="chart-sub">Waktu komputasi algoritma dalam milidetik (N=10.000, bad=15%)</div>
+        <div class="legend-row">
+          <div class="legend-item"><div class="legend-dot" style="background:#1D9E75"></div>Hybrid DP</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#D85A30"></div>Greedy</div>
+        </div>
+        <div style="position:relative; height:220px;">
+          <canvas id="chart2" role="img" aria-label="Line chart CPU time growth vs k">DP grows exponentially, Greedy stays near zero</canvas>
+        </div>
+      </div>
+
+      <!-- Chart 3: Recovery time vs bad ratio -->
+      <div class="chart-card">
+        <div class="chart-title">Eks. 4 — Recovery Time vs Bad Ratio</div>
+        <div class="chart-sub">Total waktu recovery (detik) vs tingkat kerusakan (k=8)</div>
+        <div class="legend-row">
+          <div class="legend-item"><div class="legend-dot" style="background:#1D9E75"></div>Hybrid DP</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#D85A30"></div>Greedy</div>
+        </div>
+        <div style="position:relative; height:220px;">
+          <canvas id="chart3" role="img" aria-label="Line chart recovery time vs bad ratio">Both increase with bad ratio, DP consistently lower</canvas>
+        </div>
+      </div>
+
+      <!-- Chart 4: Improvement % vs bad ratio -->
+      <div class="chart-card">
+        <div class="chart-title">Eks. 4 — Improvement % vs Bad Ratio</div>
+        <div class="chart-sub">Keuntungan DP semakin signifikan saat bad ratio meningkat</div>
+        <div class="legend-row">
+          <div class="legend-item"><div class="legend-dot" style="background:#7F77DD"></div>Improvement DP (%)</div>
+        </div>
+        <div style="position:relative; height:220px;">
+          <canvas id="chart4" role="img" aria-label="Line chart improvement percentage vs bad ratio">Improvement grows from 2% to 12% as bad ratio increases</canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-2">
+      <h3 style="margin-bottom:1rem;">Eks. 3 — Contoh Konkret: N=100, k=4</h3>
+      <p style="font-size:13px;">Konfigurasi: <code>num_sectors=100, bad_ratio=8%, cluster_prob=0.9, start=50, targets=[1,30,70,99]</code></p>
+      <div class="algo-cols" style="margin-top:1rem;">
+        <div class="algo-card dp">
+          <h3>Hybrid DP</h3>
+          <div class="algo-row"><span>Urutan optimal</span><span>[30 → 1 → 70 → 99]</span></div>
+          <div class="algo-row"><span>Total waktu</span><span>~0.8524 detik</span></div>
+          <div class="algo-row"><span>Strategi</span><span>Hindari bolak-balik</span></div>
+        </div>
+        <div class="algo-card gr">
+          <h3>Greedy</h3>
+          <div class="algo-row"><span>Urutan greedy</span><span>[30 → 70 → 99 → 1]</span></div>
+          <div class="algo-row"><span>Total waktu</span><span>~0.9680 detik</span></div>
+          <div class="algo-row"><span>Kekurangan</span><span>Backtrack tidak perlu</span></div>
+        </div>
+      </div>
+      <p style="margin-top:1rem; font-size:13px;">
+        Greedy memilih target terdekat dari posisi 50 → ke 30, lalu ke 70, lalu ke 99,
+        dan terakhir harus balik ke 1 (melompat jauh). DP mengenali bahwa mengunjungi
+        1 sebelum 70 dan 99 jauh lebih efisien secara keseluruhan.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- KOMPLEKSITAS -->
+<section id="kompleksitas">
+  <div class="section-inner">
+    <div class="section-label">06 · Analisis Kompleksitas</div>
+    <h2>Analisis Waktu & Ruang</h2>
+    <p>Masalah ini termasuk kelas <span class="tag tag-np">NP-Hard</span> melalui reduksi polinomial dari TSP. Namun, dengan DP Held-Karp dan batasan k yang kecil, solusi optimal tetap komputasional.</p>
+
+    <div class="tbl-wrap mt-2">
+      <table class="complexity-table">
+        <thead>
+          <tr><th>Komponen</th><th>Waktu</th><th>Ruang</th><th>Catatan</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>generate_logi (LOGI)</td><td>O(N)</td><td>O(N)</td><td>BFS propagasi bad sector</td></tr>
+          <tr><td>build_adjacency</td><td>O(N)</td><td>O(N)</td><td>Graf linear bidirectional</td></tr>
+          <tr><td>Dijkstra (single-source)</td><td>O(N log N)</td><td>O(N)</td><td>|E|=O(N) untuk graf linear</td></tr>
+          <tr><td>build_distance_matrix</td><td>O(k · N log N)</td><td>O(k²)</td><td>(k+1) eksekusi Dijkstra</td></tr>
+          <tr><td>dp_tsp (Held-Karp)</td><td>O(k² · 2^k)</td><td>O(k · 2^k)</td><td>State: dp[2^k][k]</td></tr>
+          <tr><td>greedy_nearest</td><td>O(k²)</td><td>O(k)</td><td>Seleksi per langkah</td></tr>
+          <tr style="border-top: 1px solid var(--border2);">
+            <td><strong>TOTAL — Hybrid DP</strong></td>
+            <td><strong>O(k·N log N + k²·2^k)</strong></td>
+            <td><strong>O(N + k·2^k)</strong></td>
+            <td>Dominan oleh DP saat k besar</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card-grid mt-2">
+      <div class="card">
+        <h3>Bottleneck DP</h3>
+        <p style="font-size:13px;">Untuk k=15: 2^15 = 32.768 state × 15² = 7.372.800 operasi DP. Pada hardware modern, ini selesai dalam &lt;500ms — jauh di bawah total recovery time yang bisa mencapai ribuan detik.</p>
+        <div class="formula">k=15 → ~7.3M operasi → &lt;500ms</div>
+      </div>
+      <div class="card">
+        <h3>Kelas Kompleksitas</h3>
+        <p style="font-size:13px;">Masalah termasuk <strong style="color:var(--text)">NP-Hard</strong> karena dapat direduksi dari TSP secara polinomial. Namun, karena k biasanya kecil (3–15 file target), DP exact tetap praktis digunakan.</p>
+        <div class="formula">TSP ≤p HDD-Recovery-Ordering ∈ NP-Hard</div>
+      </div>
+      <div class="card">
+        <h3>Trade-off Praktis</h3>
+        <p style="font-size:13px;">Greedy relevan saat k &gt; 15 atau latensi komputasi kritis. Hybrid DP unggul saat k ≤ 15 dan optimalitas penting (bad_ratio tinggi, file kritikal).</p>
+        <div class="formula">k≤12 + bad_ratio tinggi → Gunakan Hybrid DP</div>
+      </div>
+    </div>
+
+    <div class="tbl-wrap mt-2">
+      <table>
+        <thead>
+          <tr><th>Kondisi</th><th>Rekomendasi</th><th>Alasan</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>k ≤ 12, bad_ratio tinggi (≥15%)</td><td><span class="tag tag-dp">Hybrid DP</span></td><td>Ruang keputusan luas, greedy sering sub-optimal</td></tr>
+          <tr><td>k > 15, real-time requirement</td><td><span class="tag tag-gr">Greedy / Heuristik</span></td><td>DP terlalu lambat untuk kebutuhan real-time</td></tr>
+          <tr><td>HDD hampir mulus (bad_ratio &lt; 5%)</td><td><span class="tag tag-dp">Kedua Ekuivalen</span></td><td>Penalti minimal, perbedaan tidak signifikan</td></tr>
+          <tr><td>Forensik digital, recovery kritikal</td><td><span class="tag tag-dp">Hybrid DP</span></td><td>Jaminan optimal diperlukan; k biasanya kecil</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- KESIMPULAN -->
+<section id="kesimpulan">
+  <div class="section-inner">
+    <div class="section-label">07 · Kesimpulan</div>
+    <h2>Temuan & Kontribusi Penelitian</h2>
+
+    <div class="card-grid">
+      <div class="card">
+        <div style="font-size:1.5rem; margin-bottom:0.75rem;">✅</div>
+        <h3>DP selalu optimal</h3>
+        <p style="font-size:13px;">Held-Karp menjamin solusi exact. Improvement ≥ 0% di semua skenario — tidak pernah lebih buruk dari Greedy.</p>
+      </div>
+      <div class="card">
+        <div style="font-size:1.5rem; margin-bottom:0.75rem;">📈</div>
+        <h3>Signifikan saat bad_ratio tinggi</h3>
+        <p style="font-size:13px;">Improvement DP paling besar pada bad_ratio tinggi (12.07%) dan k besar — distribusi penalti membuat urutan kunjungan sangat kritis.</p>
+      </div>
+      <div class="card">
+        <div style="font-size:1.5rem; margin-bottom:0.75rem;">⏱️</div>
+        <h3>Komputasi tetap praktis</h3>
+        <p style="font-size:13px;">CPU time DP &lt; 500ms untuk k ≤ 15, jauh di bawah total recovery time yang mencapai ribuan detik.</p>
+      </div>
+      <div class="card">
+        <div style="font-size:1.5rem; margin-bottom:0.75rem;">🔀</div>
+        <h3>Greedy tetap relevan</h3>
+        <p style="font-size:13px;">Untuk k > 15 atau skenario real-time, Greedy adalah pilihan pragmatis meski tidak menjamin optimalitas.</p>
+      </div>
+    </div>
+
+    <div class="card mt-2">
+      <h3 style="margin-bottom:1rem;">Kontribusi Utama Penelitian</h3>
+      <div class="pipeline">
+        <div class="pipeline-step">
+          <div class="pipeline-num p1">1</div>
+          <div class="pipeline-body">
+            <h4>Model Komputasional Baru</h4>
+            <p style="font-size:13px;">Formulasi masalah scanning path HDD recovery yang secara eksplisit mempertimbangkan offset sektor, propagasi bad sector (LOGI), kecepatan baca, dan throughput scanner — lebih realistis dari pendekatan binary.</p>
+          </div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-num p1">2</div>
+          <div class="pipeline-body">
+            <h4>Framework Hybrid Pertama di Domain HDD Recovery</h4>
+            <p style="font-size:13px;">Pertama kali mengintegrasikan Dijkstra (shortest path lokal) + DP bitmask (urutan global optimal) pada domain data recovery HDD — mengisi gap yang belum pernah diisi dalam literatur.</p>
+          </div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-num p2">3</div>
+          <div class="pipeline-body">
+            <h4>Implementasi & Analisis Lengkap</h4>
+            <p style="font-size:13px;">Python reproducible dengan seed deterministik, analisis kompleksitas komprehensif, reduksi ke NP-Hard, dan rekomendasi praktis bagi pengembang data recovery dan praktisi digital forensics.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-2" style="border-color:rgba(29,158,117,0.4); background:rgba(29,158,117,0.06);">
+      <h3 style="color:var(--accent2); margin-bottom:0.75rem;">Kata Kunci</h3>
+      <div style="display:flex; flex-wrap:wrap; gap:8px;">
+        <span class="tag tag-dp">HDD Recovery</span>
+        <span class="tag tag-dp">Dijkstra</span>
+        <span class="tag tag-dp">Dynamic Programming</span>
+        <span class="tag tag-bad">Bad Sector Propagation</span>
+        <span class="tag tag-np">NP-Hard</span>
+        <span class="tag tag-np">Scanning Path Optimization</span>
+        <span class="tag tag-gr">Greedy Nearest Neighbor</span>
+        <span class="tag tag-dp">Model LOGI</span>
+        <span class="tag tag-np">TSP</span>
+        <span class="tag tag-dp">Held-Karp</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>
+    <strong>Optimasi Scanning Path pada HDD Recovery Menggunakan Hybrid Dijkstra–Dynamic Programming</strong>
+  </p>
+  <p style="margin-top:0.5rem;">
+    Muhammad Rifki Yusria Hatta (247006111065) · Aditya Ihsan Maulana (247006111069)<br>
+    Kelompok 77 · Program Studi Informatika · Fakultas Teknik · Universitas Siliwangi · 2026
+  </p>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
